@@ -18,53 +18,74 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+const peers = {};
+
 app.get("/", (req, res) => {
     res.send("Server is running");
 });
 
 app.get("/join", (req, res) => {
-    res.send({ link: uuidV4() });
+    const roomId = uuidV4();
+    res.send({ link: roomId });
 });
 
-const peers = {};
-
 io.on("connection", (socket) => {
-    peers[socket.id] = socket;
-    // Asking all other clients to setup the peer connection receiver
-    for (let id in peers) {
-        if (id === socket.id) continue;
-        console.log("sending init receive to " + socket.id);
-        peers[id].emit("initReceive", socket.id);
-    }
-
-    /**
-     * relay a peerconnection signal to a specific socket
-     */
-    socket.on("signal", (data) => {
-        console.log("sending signal from " + socket.id + " to ", data);
-        if (!peers[data.socket_id]) return;
-        peers[data.socket_id].emit("signal", {
-            socket_id: socket.id,
-            signal: data.signal,
-        });
-    });
-
     socket.emit("me", socket.id);
 
     socket.on("disconnect", () => {
         console.log("socket disconnected " + socket.id);
-
-        socket.broadcast.emit("removePeer", socket.id);
+        // socket.broadcast.emit("removePeer", socket.id);
         delete peers[socket.id];
     });
 
-    /**
-     * Send message to client to initiate a connection
-     * The sender has already setup a peer connection receiver
-     */
-    socket.on("initSend", (init_socket_id) => {
-        console.log("INIT SEND by " + socket.id + " for " + init_socket_id);
-        peers[init_socket_id].emit("initSend", socket.id);
+    socket.on("join-room", (userData) => {
+        const { roomID } = userData;
+        const userID = socket.id;
+        socket.join(roomID);
+        console.log(`user ${userID} joined room ${roomID}`);
+
+        socket.to(roomID).emit("initReceive", userID);
+        console.log("sending init receive to " + userID);
+
+        /**
+         * Send message to client to initiate a connection
+         * The sender has already setup a peer connection receiver
+         */
+        socket.on("initSend", (init_socket_id) => {
+            console.log("INIT SEND by " + socket.id + " for " + init_socket_id);
+            socket.to(roomID).emit("initSend", socket.id);
+        });
+
+        socket.on("signal", (data) => {
+            console.log("sending signal from " + socket.id + " to ", data);
+            socket.to(roomID).emit("signal", {
+                socket_id: socket.id,
+                signal: data.signal,
+            });
+        });
+
+        socket.on("disconnect", () => {
+            console.log("user disconnected");
+            socket.to(roomID).emit("disconnected", userID);
+        });
+
+        socket.on("broadcast-message", (message) => {
+            socket.to(roomID).emit("new-broadcast-messsage", {
+                ...message,
+                userData,
+            });
+        });
+        // socket.on('reconnect-user', () => {
+        //     socket.to(roomID).broadcast.emit('new-user-connect', userData);
+        // });
+        socket.on("display-media", (value) => {
+            socket
+                .to(roomID)
+                .broadcast.emit("display-media", { userID, value });
+        });
+        socket.on("user-video-off", (value) => {
+            socket.to(roomID).broadcast.emit("user-video-off", value);
+        });
     });
 });
 
