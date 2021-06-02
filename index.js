@@ -18,8 +18,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const peers = {};
-
 app.get("/", (req, res) => {
     res.send("Server is running");
 });
@@ -30,42 +28,13 @@ app.get("/join", (req, res) => {
 });
 
 io.on("connection", (socket) => {
-    socket.emit("me", socket.id);
-
-    socket.on("disconnect", () => {
-        console.log("socket disconnected " + socket.id);
-        // socket.broadcast.emit("removePeer", socket.id);
-        delete peers[socket.id];
-    });
-
-    socket.on("join-room", (userData) => {
-        const { roomID } = userData;
-        const userID = socket.id;
+    socket.on("join-room", (roomID, userID) => {
         socket.join(roomID);
         console.log(`user ${userID} joined room ${roomID}`);
-
-        socket.to(roomID).emit("initReceive", userID);
-        console.log("sending init receive to " + userID);
-
-        /**
-         * Send message to client to initiate a connection
-         * The sender has already setup a peer connection receiver
-         */
-        socket.on("initSend", (init_socket_id) => {
-            console.log("INIT SEND by " + socket.id + " for " + init_socket_id);
-            socket.to(roomID).emit("initSend", socket.id);
-        });
-
-        socket.on("signal", (data) => {
-            console.log("sending signal from " + socket.id + " to ", data);
-            socket.to(roomID).emit("signal", {
-                socket_id: socket.id,
-                signal: data.signal,
-            });
-        });
+        socket.to(roomID).emit("user-connected", userID);
 
         socket.on("disconnect", () => {
-            console.log("user disconnected");
+            console.log("user disconnected ", userID);
             socket.to(roomID).emit("disconnected", userID);
         });
 
@@ -74,17 +43,6 @@ io.on("connection", (socket) => {
                 ...message,
                 userData,
             });
-        });
-        // socket.on('reconnect-user', () => {
-        //     socket.to(roomID).broadcast.emit('new-user-connect', userData);
-        // });
-        socket.on("display-media", (value) => {
-            socket
-                .to(roomID)
-                .broadcast.emit("display-media", { userID, value });
-        });
-        socket.on("user-video-off", (value) => {
-            socket.to(roomID).broadcast.emit("user-video-off", value);
         });
     });
 });
