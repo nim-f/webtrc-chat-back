@@ -28,12 +28,12 @@ app.get("/join", (req, res) => {
 });
 
 io.on("connection", (socket) => {
-    socket.on("join-room", (roomID, userID) => {
+    socket.on("join-room", (roomID, { id: userID, name }) => {
         socket.join(roomID);
         console.log(`user ${userID} joined room ${roomID}`);
-        socket.to(roomID).emit("user-connected", userID);
+        socket.to(roomID).emit("user-connected", {userID, name});
 
-        socket.on("disconnect", () => {
+        socket.on("user-disconnect", () => {
             console.log("user disconnected ", userID);
             socket.to(roomID).emit("disconnected", userID);
         });
